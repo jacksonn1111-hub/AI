@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>안경 착용 조사</title>
+<style>
+:root{--navy:#1F3864;--line:#e3e7ef;--pastel:#e8eefc;--ok:#dff3e4;--warn:#fff3d6}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:#f5f7fb;color:#1c2333}
+header{background:var(--navy);color:#fff;padding:18px 16px}
+header h1{margin:0;font-size:20px}
+header p{margin:6px 0 0;font-size:13px;opacity:.85}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+h2{font-size:15px;margin:0 0 10px;color:var(--navy)}
+.grade{font-size:12px;color:#6b7690;margin:10px 0 4px}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;cursor:pointer}
+.chip{border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px 12px;min-width:58px}
+.chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.names{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px}
+.name{border:1px solid var(--line);background:#fff;border-radius:8px;padding:10px 6px;text-align:center}
+.name small{color:#6b7690;margin-right:4px}
+.name.done{background:var(--ok)}
+.name.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.name.on small{color:#cfd8ee}
+.who{font-size:16px;font-weight:bold;margin-bottom:4px}
+.note{font-size:13px;color:#6b7690;margin:4px 0 10px}
+.note.warn{background:var(--warn);color:#6b5200;padding:8px 10px;border-radius:8px}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.choice button{border:2px solid var(--line);background:#fff;border-radius:10px;padding:16px 8px;font-size:16px}
+.choice button.on{border-color:var(--navy);background:var(--pastel);font-weight:bold}
+.submit{width:100%;border:0;background:var(--navy);color:#fff;border-radius:10px;padding:14px;font-size:16px}
+.submit:disabled{opacity:.4}
+.msg{text-align:center;padding:24px 8px}
+.msg b{font-size:18px;color:var(--navy)}
+.err{color:#b3261e;font-size:14px;padding:8px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>안경 착용 조사</h1>
+  <p>학급 → 내 이름 → 안경 착용 여부 순서로 선택하세요.</p>
+</header>
+<main>
+  <div id="status" class="card">불러오는 중...</div>
+  <div id="s1" class="card hide"><h2>1. 학급 선택</h2><div id="classes"></div></div>
+  <div id="s2" class="card hide"><h2>2. 내 이름 선택</h2><div id="names" class="names"></div>
+    <div class="note">초록색은 이미 제출한 학생이에요.</div></div>
+  <div id="s3" class="card hide">
+    <h2>3. 안경 착용 여부</h2>
+    <div id="who" class="who"></div>
+    <div id="again" class="note warn hide">이미 제출한 학생이에요. 다시 제출하면 이전 응답이 바뀝니다.</div>
+    <div class="note">평소 안경을 쓰고 생활하면 '안경 씀'을 선택하세요.</div>
+    <div class="choice">
+      <button id="bY" type="button">👓 안경 씀</button>
+      <button id="bN" type="button">안경 안 씀</button>
+    </div>
+    <button id="send" class="submit" type="button" disabled>제출하기</button>
+    <div id="err" class="err"></div>
+  </div>
+  <div id="fin" class="card msg hide"><b>제출 완료!</b><p id="finTxt"></p>
+    <button id="next" class="chip" type="button">다른 친구 입력하기</button></div>
+</main>
+<script>
+// ★ Apps Script 웹앱 URL(배포 후 받은 .../exec 주소)을 붙여 넣으세요
+const API = 'PASTE_APPS_SCRIPT_URL_HERE';
+
+let students = [], done = new Set(), cls = null, sel = null, ans = null;
+const $ = id => document.getElementById(id);
+const key = (g, c, n) => g + '-' + c + '-' + n;
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else e.setAttribute(k, attrs[k]);
+  }
+  kids.flat().forEach(x => { if (x != null) e.append(x); });
+  return e;
+}
+function show(ids) {
+  ['s1', 's2', 's3', 'fin'].forEach(i => $(i).classList.toggle('hide', !ids.includes(i)));
+}
+
+async function load() {
+  if (API.includes('PASTE_')) { $('status').textContent = '설정 오류: index.html의 API 주소를 입력해 주세요.'; return; }
+  try {
+    const r = await fetch(API + '?action=roster');
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    students = j.students;
+    done = new Set(j.done.map(d => key(d[0], d[1], d[2])));
+    $('status').classList.add('hide');
+    renderClasses(); show(['s1']);
+  } catch (e) {
+    $('status').textContent = '불러오지 못했어요. 잠시 후 다시 시도해 주세요. (' + e.message + ')';
+  }
+}
+
+function renderClasses() {
+  const box = $('classes'); box.replaceChildren();
+  const map = {};
+  students.forEach(s => { (map[s.g] = map[s.g] || new Set()).add(s.c); });
+  Object.keys(map).sort().forEach(g => {
+    box.append(h('div', { class: 'grade' }, g + '학년'));
+    const row = h('div', { class: 'row' });
+    [...map[g]].sort((a, b) => a - b).forEach(c => {
+      row.append(h('button', {
+        class: 'chip' + (cls && cls.g == g && cls.c == c ? ' on' : ''), type: 'button',
+        onclick: () => { cls = { g: +g, c }; sel = null; renderClasses(); renderNames(); show(['s1', 's2']); }
+      }, c + '반'));
+    });
+    box.append(row);
+  });
+}
+
+function renderNames() {
+  const box = $('names'); box.replaceChildren();
+  students.filter(s => s.g === cls.g && s.c === cls.c).sort((a, b) => a.n - b.n).forEach(s => {
+    const k = key(s.g, s.c, s.n);
+    box.append(h('button', {
+      class: 'name' + (done.has(k) ? ' done' : '') + (sel && sel.n === s.n ? ' on' : ''), type: 'button',
+      onclick: () => pick(s)
+    }, h('small', {}, s.n + '번'), s.name));
+  });
+}
+
+function pick(s) {
+  sel = s; ans = null; $('err').textContent = '';
+  $('who').textContent = s.g + '학년 ' + s.c + '반 ' + s.n + '번 ' + s.name;
+  $('again').classList.toggle('hide', !done.has(key(s.g, s.c, s.n)));
+  $('bY').classList.remove('on'); $('bN').classList.remove('on'); $('send').disabled = true;
+  renderNames(); show(['s1', 's2', 's3']);
+  $('s3').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function choose(v) {
+  ans = v;
+  $('bY').classList.toggle('on', v === 'Y'); $('bN').classList.toggle('on', v === 'N');
+  $('send').disabled = false;
+}
+$('bY').onclick = () => choose('Y');
+$('bN').onclick = () => choose('N');
+
+$('send').onclick = async () => {
+  if (!sel || !ans) return;
+  $('send').disabled = true; $('send').textContent = '제출 중...'; $('err').textContent = '';
+  try {
+    const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ g: sel.g, c: sel.c, n: sel.n, glasses: ans }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    done.add(key(sel.g, sel.c, sel.n));
+    $('finTxt').textContent = sel.name + ' 학생의 응답이 저장되었어요.';
+    show(['fin']);
+  } catch (e) {
+    $('err').textContent = '제출에 실패했어요. 다시 눌러 주세요. (' + e.message + ')';
+    $('send').disabled = false;
+  }
+  $('send').textContent = '제출하기';
+};
+$('next').onclick = () => { sel = null; ans = null; renderNames(); show(['s1', 's2']); };
+
+load();
+</script>
+</body>
+</html>

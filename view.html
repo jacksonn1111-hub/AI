@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>안경 착용 조사 - 통합 현황</title>
+<style>
+:root{--navy:#1F3864;--line:#dfe4ee;--pastel:#e8eefc;--ok:#dff3e4;--warn:#fff3d6;--gray:#6b7690}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:#f5f7fb;color:#1c2333}
+header{background:var(--navy);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+header h1{margin:0;font-size:19px}
+main{max-width:900px;margin:0 auto;padding:16px}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+button,select,input{font:inherit}
+button{cursor:pointer}
+.btn{border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:8px;padding:7px 12px}
+.btn.pri{background:var(--navy);color:#fff}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.bar .sp{flex:1}
+input[type=password]{border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+table{width:100%;border-collapse:collapse}
+th{background:var(--navy);color:#fff;font-weight:normal;padding:8px;font-size:14px}
+td{padding:8px;border-bottom:1px solid var(--line);text-align:center;font-size:14px}
+tr.cl{cursor:pointer}
+tr.cl:hover td{background:#f3f6fd}
+tr.tot td{font-weight:bold;background:var(--pastel);border-bottom:0}
+td.l,th.l{text-align:left}
+.det td{background:#fafbfe;text-align:left;font-size:13px;line-height:1.7}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;margin:1px 2px;font-size:12px}
+.tg{background:var(--ok)} .tn{background:var(--warn)}
+.pill{color:var(--gray);font-size:13px}
+.err{color:#b3261e;margin-top:8px}
+.hide{display:none!important}
+#printArea{display:none}
+/* ---------- 인쇄 ---------- */
+.pp{page-break-after:always}
+.pp:last-child{page-break-after:auto}
+.ph{background:var(--navy);color:#fff;padding:12px 16px;font-size:20px;font-weight:bold;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.ps{display:flex;gap:10px;margin:12px 0;font-size:14px}
+.ps span{background:var(--pastel);padding:5px 12px;border-radius:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pp table{margin-top:4px}
+.pp th{background:#fff;color:var(--navy);border-bottom:2px solid var(--navy);padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pp td{padding:6px;border-bottom:1px solid #cfd5e3}
+.pp .y{background:var(--ok);font-weight:bold;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pp .na{color:#999}
+.pf{margin-top:10px;font-size:12px;color:#777;text-align:right}
+@media print{
+  @page{margin:14mm}
+  body{background:#fff}
+  body.printing > *:not(#printArea){display:none!important}
+  body.printing #printArea{display:block}
+}
+</style>
+</head>
+<body>
+<header><h1>안경 착용 조사 · 통합 현황</h1><span id="upd" class="pill" style="color:#cfd8ee"></span></header>
+<main>
+  <div id="login" class="card">
+    <div class="bar"><input id="code" type="password" placeholder="관리자 코드"><button id="go" class="btn pri" type="button">들어가기</button></div>
+    <div id="lerr" class="err"></div>
+  </div>
+
+  <div id="dash" class="hide">
+    <div class="card">
+      <div class="bar">
+        <select id="gsel"><option value="0">전체 학년</option><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option></select>
+        <button id="ref" class="btn" type="button">새로고침</button>
+        <span class="sp"></span>
+        <button id="pall" class="btn pri" type="button">표시된 반 모두 인쇄</button>
+      </div>
+      <table>
+        <thead><tr><th class="l">학급</th><th>인원</th><th>응답</th><th>안경 씀</th><th>미응답</th><th>안경 비율</th><th></th></tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+      <p class="pill">학급 줄을 누르면 안경 쓴 학생과 미응답 학생 명단이 펼쳐져요. 비율은 학급 인원 대비입니다.</p>
+    </div>
+  </div>
+</main>
+<div id="printArea"></div>
+<script>
+// ★ Apps Script 웹앱 URL(.../exec)을 붙여 넣으세요 (index.html과 같은 주소)
+const API = 'PASTE_APPS_SCRIPT_URL_HERE';
+
+let classes = [];           // [{g,c,students:[{n,name,glasses,time}]}]
+let open = new Set();
+const $ = id => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]);
+    else e.setAttribute(k, attrs[k]);
+  }
+  kids.flat().forEach(x => { if (x != null) e.append(x); });
+  return e;
+}
+const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '-';
+function stat(cl) {
+  const total = cl.students.length;
+  const yes = cl.students.filter(s => s.glasses === 'Y').length;
+  const resp = cl.students.filter(s => s.glasses === 'Y' || s.glasses === 'N').length;
+  return { total, yes, resp, none: total - resp };
+}
+
+async function load(code) {
+  if (API.includes('PASTE_')) throw new Error('view.html의 API 주소를 입력해 주세요.');
+  const r = await fetch(API + '?action=admin&code=' + encodeURIComponent(code));
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+  const am = {};
+  j.answers.forEach(a => { am[a.g + '-' + a.c + '-' + a.n] = a; });
+  const cm = {};
+  j.students.forEach(s => {
+    const k = s.g + '-' + s.c;
+    const cl = cm[k] = cm[k] || { g: s.g, c: s.c, students: [] };
+    const a = am[k + '-' + s.n];
+    cl.students.push({ n: s.n, name: s.name, glasses: a ? a.glasses : null, time: a ? a.time : '' });
+  });
+  classes = Object.values(cm).sort((a, b) => a.g - b.g || a.c - b.c);
+  classes.forEach(cl => cl.students.sort((a, b) => a.n - b.n));
+  $('upd').textContent = '갱신 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function visible() {
+  const g = +$('gsel').value;
+  return classes.filter(cl => !g || cl.g === g);
+}
+
+function render() {
+  const tb = $('tb'); tb.replaceChildren();
+  const list = visible();
+  let T = { total: 0, yes: 0, resp: 0, none: 0 };
+  list.forEach(cl => {
+    const s = stat(cl), k = cl.g + '-' + cl.c;
+    Object.keys(T).forEach(x => T[x] += s[x]);
+    tb.append(h('tr', { class: 'cl', onclick: () => { open.has(k) ? open.delete(k) : open.add(k); render(); } },
+      h('td', { class: 'l' }, cl.g + '학년 ' + cl.c + '반'), h('td', {}, s.total), h('td', {}, s.resp),
+      h('td', {}, h('b', {}, s.yes)), h('td', {}, s.none), h('td', {}, pct(s.yes, s.total)),
+      h('td', {}, h('button', { class: 'btn', type: 'button', onclick: ev => { ev.stopPropagation(); printClasses([cl]); } }, '인쇄'))));
+    if (open.has(k)) {
+      const y = cl.students.filter(x => x.glasses === 'Y'), n = cl.students.filter(x => !x.glasses);
+      tb.append(h('tr', { class: 'det' }, h('td', { colspan: 7 },
+        h('div', {}, '👓 안경 씀 (' + y.length + '명) ', y.length ? y.map(x => h('span', { class: 'tag tg' }, x.n + ' ' + x.name)) : '없음'),
+        h('div', {}, '미응답 (' + n.length + '명) ', n.length ? n.map(x => h('span', { class: 'tag tn' }, x.n + ' ' + x.name)) : '없음'))));
+    }
+  });
+  tb.append(h('tr', { class: 'tot' }, h('td', { class: 'l' }, '합계'), h('td', {}, T.total), h('td', {}, T.resp),
+    h('td', {}, T.yes), h('td', {}, T.none), h('td', {}, pct(T.yes, T.total)), h('td', {})));
+}
+
+function section(cl) {
+  const s = stat(cl);
+  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+  return h('section', { class: 'pp' },
+    h('div', { class: 'ph' }, cl.g + '학년 ' + cl.c + '반 안경 착용 조사'),
+    h('div', { class: 'ps' }, h('span', {}, '학급 인원 ' + s.total + '명'), h('span', {}, '안경 씀 ' + s.yes + '명'),
+      h('span', {}, '안 씀 ' + (s.resp - s.yes) + '명'), h('span', {}, '미응답 ' + s.none + '명')),
+    h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, '번호'), h('th', {}, '이름'), h('th', {}, '안경'))),
+      h('tbody', {}, cl.students.map(x => h('tr', {},
+        h('td', {}, x.n), h('td', {}, x.name),
+        x.glasses === 'Y' ? h('td', { class: 'y' }, '○') : x.glasses === 'N' ? h('td', {}, '-') : h('td', { class: 'na' }, '미응답'))))),
+    h('div', { class: 'pf' }, today + ' 기준'));
+}
+
+function printClasses(list) {
+  if (!list.length) return;
+  const pa = $('printArea'); pa.replaceChildren(...list.map(section));
+  document.body.classList.add('printing');
+  const clean = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', clean); };
+  window.addEventListener('afterprint', clean);
+  window.print();
+}
+
+async function enter() {
+  $('lerr').textContent = '';
+  const code = $('code').value;
+  try {
+    await load(code);
+    sessionStorage.setItem('gcode', code);
+    $('login').classList.add('hide'); $('dash').classList.remove('hide'); render();
+  } catch (e) { $('lerr').textContent = e.message; }
+}
+$('go').onclick = enter;
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') enter(); });
+$('gsel').onchange = render;
+$('ref').onclick = async () => {
+  try { await load(sessionStorage.getItem('gcode') || ''); render(); } catch (e) { alert(e.message); }
+};
+$('pall').onclick = () => printClasses(visible());
+try { const c = sessionStorage.getItem('gcode'); if (c) { $('code').value = c; enter(); } } catch (e) {}
+</script>
+</body>
+</html>
