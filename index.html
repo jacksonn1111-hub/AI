@@ -51,7 +51,7 @@ button{font:inherit;cursor:pointer}
     <div class="note">초록색은 이미 제출한 반이에요.</div></div>
   <div id="s2" class="card hide">
     <h2 id="t2">2. 안경 쓴 친구를 모두 눌러 주세요</h2>
-    <div id="again" class="note warn hide">이미 제출한 반이에요. 다시 제출하면 반 전체 응답이 새로 덮어써져요.</div>
+    <div id="again" class="note warn hide">이미 제출한 반이에요. 이전에 선택한 친구들이 체크돼 있어요. 고친 뒤 다시 제출하면 새로 저장돼요.</div>
     <div class="note">평소 안경을 쓰고 생활하는 친구만 누르면 돼요. 다시 누르면 취소돼요.</div>
     <div id="names" class="names"></div>
     <div id="sum" class="sum"></div>
@@ -65,7 +65,7 @@ button{font:inherit;cursor:pointer}
 // ★ Apps Script 웹앱 URL(배포 후 받은 .../exec 주소)을 붙여 넣으세요
 const API = 'https://script.google.com/macros/s/AKfycbyy8qkWCa6P9fHSIdce1wIE2tuOUKA93f5Y99N5zNopWeM-OcOgea4MWRUXHtpz-dOd/exec';
 
-let students = [], done = new Set(), cls = null, picked = new Set();
+let students = [], done = new Set(), yes = new Set(), cls = null, picked = new Set();
 const $ = id => document.getElementById(id);
 function h(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -90,6 +90,7 @@ async function load() {
     if (!j.ok) throw new Error(j.error);
     students = j.students;
     done = new Set(j.done.map(d => d[0] + '-' + d[1]));
+    yes = new Set((j.yes || []).map(d => d.join('-')));
     $('status').classList.add('hide');
     renderClasses(); show(['s1']);
   } catch (e) {
@@ -107,7 +108,7 @@ function renderClasses() {
     [...map[g]].sort((a, b) => a - b).forEach(c => {
       row.append(h('button', {
         class: 'chip' + (done.has(g + '-' + c) ? ' doneC' : ''), type: 'button',
-        onclick: () => { cls = { g: +g, c }; picked = new Set(); $('err').textContent = ''; renderNames(); show(['s2']); window.scrollTo(0, 0); }
+        onclick: () => { cls = { g: +g, c }; picked = new Set(members().filter(s => yes.has(s.g + '-' + s.c + '-' + s.n)).map(s => s.n)); $('err').textContent = ''; renderNames(); show(['s2']); window.scrollTo(0, 0); }
       }, c + '반' + (done.has(g + '-' + c) ? ' ✓' : '')));
     });
     box.append(row);
@@ -141,6 +142,7 @@ $('send').onclick = async () => {
     const j = await r.json();
     if (!j.ok) throw new Error(j.error);
     done.add(cls.g + '-' + cls.c);
+    members().forEach(s => { const k = s.g + '-' + s.c + '-' + s.n; picked.has(s.n) ? yes.add(k) : yes.delete(k); });
     $('finTxt').textContent = cls.g + '학년 ' + cls.c + '반 응답이 저장되었어요. (안경 ' + j.glasses + '명 / 전체 ' + j.total + '명)';
     show(['fin']);
   } catch (e) {
