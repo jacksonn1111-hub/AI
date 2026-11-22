@@ -85,7 +85,7 @@ const members = () => students.filter(s => s.g === cls.g && s.c === cls.c).sort(
 async function load() {
   if (API.includes('PASTE_')) { $('status').textContent = '설정 오류: index.html의 API 주소를 입력해 주세요.'; return; }
   try {
-    const r = await fetch(API + '?action=roster');
+    const r = await fetch(API + '?action=roster&t=' + Date.now(), { cache: 'no-store' });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error);
     students = j.students;
