@@ -65,7 +65,7 @@ button{font:inherit;cursor:pointer}
 // ★ Apps Script 웹앱 URL(배포 후 받은 .../exec 주소)을 붙여 넣으세요
 const API = 'https://script.google.com/macros/s/AKfycbyy8qkWCa6P9fHSIdce1wIE2tuOUKA93f5Y99N5zNopWeM-OcOgea4MWRUXHtpz-dOd/exec';
 
-let students = [], done = new Set(), yes = new Set(), cls = null, picked = new Set();
+let yesCount = 0, students = [], done = new Set(), yes = new Set(), cls = null, picked = new Set();
 const $ = id => document.getElementById(id);
 function h(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -91,6 +91,7 @@ async function load() {
     students = j.students;
     done = new Set(j.done.map(d => d[0] + '-' + d[1]));
     yes = new Set((j.yes || []).map(d => d.join('-')));
+    yesCount = (j.yes || []).length;
     $('status').classList.add('hide');
     renderClasses(); show(['s1']);
   } catch (e) {
@@ -127,7 +128,8 @@ function renderNames() {
   });
   const sel = members().filter(s => picked.has(s.n));
   $('sum').textContent = '👓 안경 쓴 친구 ' + sel.length + '명 / 반 전체 ' + members().length + '명' +
-    (sel.length ? ' — ' + sel.map(s => s.name).join(', ') : '');
+    (sel.length ? ' — ' + sel.map(s => s.name).join(', ') : '') +
+    '  [서버 기록 ' + yesCount + '건 · v3]';
 }
 
 $('send').onclick = async () => {
